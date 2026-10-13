@@ -1,0 +1,43 @@
+name: Unzip to repo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: unzip
+        run: |
+          if [ ! -f src.zip ]; then
+            echo "根目录没有 src.zip，跳过"
+            exit 0
+          fi
+          mkdir -p _tmp
+          unzip -q src.zip -d _tmp
+          count=$(ls _tmp | wc -l)
+          if [ "$count" = "1" ] && [ -d "_tmp/$(ls _tmp)" ]; then
+            inner="_tmp/$(ls _tmp)"
+          else
+            inner="_tmp"
+          fi
+          # 仅移除 zip 内自带的 workflow，避免 push 被拦截
+          # 不删除仓库内任何已有文件，不删除 src.zip / unzip.yml
+          rm -rf "$inner/.github/workflows"
+          cp -a "$inner"/. .
+          rm -rf _tmp
+          ls -la
+
+      - name: commit and push
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add -A
+          git commit -m "unzip source (keep all files)" || echo "无变更"
+          git push --force origin HEAD:refs/heads/main
