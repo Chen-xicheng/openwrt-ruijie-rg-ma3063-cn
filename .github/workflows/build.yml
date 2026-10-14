@@ -73,16 +73,21 @@ jobs:
       - name: Show build output
         run: |
           echo "=== Find firmware ==="
-          find openwrt/bin -type f \
-            \( -name "*.bin" -o -name "*.ubi" -o -name "*.img" \) \
+          ls -l openwrt/bin/targets/qualcommax/ipq50xx/ || true
 
-            | sort
-
-      - name: Upload firmware
-        uses: actions/upload-artifact@v4
+      - name: Release firmware
+        uses: softprops/action-gh-release@v2
         with:
-          name: openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063
-          path: |
+          tag_name: rg-ma3063-${{ github.run_number }}
+          name: RG-MA3063 OpenWrt Build ${{ github.run_number }}
+          body: 自动编译生成，包含 sysupgrade.bin 与 factory.ubi
+          files: |
             openwrt/bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin
-            openwrt/bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-*
-          if-no-files-found: warn
+            openwrt/bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi
+            openwrt/bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb
+            openwrt/bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest
+            openwrt/bin/targets/qualcommax/ipq50xx/sha256sums
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
