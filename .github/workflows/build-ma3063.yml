@@ -51,9 +51,15 @@ jobs:
           CONFIG_PACKAGE_luci-theme-argon=y
           CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y
           EOF
-          for f in target/linux/qualcommax/config-6.12 target/linux/qualcommax/config-6.6 target/linux/qualcommax/config-6.8; do
-            [ -f "$f" ] && sed -i 's/^CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT=m/# CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT is not set/' "$f"
-          done
+          echo "=== 修改前搜索 ==="
+          grep -rn "NET_DSA_QCA8K_LEDS_SUPPORT" target/linux || echo "target/linux 里没找到"
+          find target/linux -name 'config-*' -type f -exec sed -i \
+            -e 's/^CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT=m/# CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT is not set/' \
+            -e 's/^CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT=y/CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT=y/' {} \;
+          find target/linux -name 'config-*' -type f -exec sed -i \
+            -e 's/^CONFIG_LEDS_CLASS=m/CONFIG_LEDS_CLASS=y/' {} \;
+          make defconfig
+          sed -i 's/^CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT=m/# CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT is not set/' .config 2>/dev/null || true
           make defconfig
 
       - name: Download sources
