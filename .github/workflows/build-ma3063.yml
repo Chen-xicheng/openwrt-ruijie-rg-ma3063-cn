@@ -46,30 +46,14 @@ jobs:
           CONFIG_TARGET_qualcommax_ipq50xx=y
           CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y
           CONFIG_PACKAGE_luci=y
-          CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
-          CONFIG_PACKAGE_luci-app-ttyd=y
-          CONFIG_PACKAGE_luci-theme-argon=y
-          CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y
-          CONFIG_PACKAGE_firmware-ipq-wifi=y
           EOF
-          
-          echo "=== 检查 02_network 端口映射 ==="
-          grep -A5 "ma3063\|MA3063" target/linux/qualcommax/ipq50xx/base-files/etc/board.d/02_network || echo "未找到 ma3063 端口配置！"
-          
-          # 修复交换机驱动
-          find target/linux -name 'config-*' -type f -exec sed -i \
-            -e 's/^CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT=m/CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT=y/' \
-            -e 's/^CONFIG_NET_DSA_QCA8K=m/CONFIG_NET_DSA_QCA8K=y/' \
-            -e 's/^CONFIG_LEDS_CLASS=m/CONFIG_LEDS_CLASS=y/' {} \;
-            
           make defconfig
 
       - name: Download sources
         run: make download -j$(nproc)
 
       - name: Build firmware
-        run: |
-          make -j$(nproc) || make -j1 V=s
+        run: make -j$(nproc)
 
       - name: Collect artifacts
         run: |
