@@ -50,14 +50,18 @@ jobs:
           CONFIG_PACKAGE_luci-app-ttyd=y
           CONFIG_PACKAGE_luci-theme-argon=y
           CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y
+          CONFIG_PACKAGE_firmware-ipq-wifi=y
           EOF
-          echo "=== 全仓库定位该选项 ==="
-          grep -rn "NET_DSA_QCA8K_LEDS_SUPPORT" . --exclude-dir=.git || echo "全仓库没找到"
-          echo "=== 谁 select 了它 ==="
-          grep -rn "select NET_DSA_QCA8K_LEDS_SUPPORT" . --exclude-dir=.git || echo "没有 select"
+          
+          echo "=== 检查 02_network 端口映射 ==="
+          grep -A5 "ma3063\|MA3063" target/linux/qualcommax/ipq50xx/base-files/etc/board.d/02_network || echo "未找到 ma3063 端口配置！"
+          
+          # 修复交换机驱动
           find target/linux -name 'config-*' -type f -exec sed -i \
-            -e 's/^CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT=m/# CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT is not set/' \
+            -e 's/^CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT=m/CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT=y/' \
+            -e 's/^CONFIG_NET_DSA_QCA8K=m/CONFIG_NET_DSA_QCA8K=y/' \
             -e 's/^CONFIG_LEDS_CLASS=m/CONFIG_LEDS_CLASS=y/' {} \;
+            
           make defconfig
 
       - name: Download sources
