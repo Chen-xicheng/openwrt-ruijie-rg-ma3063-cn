@@ -41,6 +41,7 @@ jobs:
 
       - name: Configure for RG-MA3063
         run: |
+          # 基础配置开启
           make defconfig
           echo "CONFIG_PACKAGE_luci=y" >> .config
           echo "CONFIG_PACKAGE_firmware-ipq-wifi=y" >> .config
@@ -48,10 +49,13 @@ jobs:
           echo "CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
+          
+          # 指定设备架构 (使用你源码库中正确的 ipq50xx)
           echo "CONFIG_TARGET_QUALCOMMAX=y" >> .config
           echo "CONFIG_TARGET_QUALCOMMAX_IPQ50XX=y" >> .config
           echo "CONFIG_TARGET_QUALCOMMAX_IPQ50XX_DEVICE_RUIJIE_RG-MA3063=y" >> .config
           
+          # 修复内核依赖
           find target/linux -name 'config-*' -type f -exec sed -i \
             -e 's/^CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT=m/# CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT is not set/' \
             -e 's/^CONFIG_NET_DSA_QCA8K=m/CONFIG_NET_DSA_QCA8K=y/' \
@@ -61,6 +65,7 @@ jobs:
 
       - name: Inject network and wireless configs
         run: |
+          # 注入网口映射脚本 (1个WAN + 3个LAN)
           mkdir -p target/linux/qualcommax/ipq50xx/base-files/etc/board.d/
           cat <<'EOF' > target/linux/qualcommax/ipq50xx/base-files/etc/board.d/02_network
           case "$board" in
@@ -70,6 +75,7 @@ jobs:
           esac
           EOF
 
+          # 注入 WiFi 配置文件
           mkdir -p target/linux/qualcommax/ipq50xx/base-files/etc/config/
           cat <<'EOF' > target/linux/qualcommax/ipq50xx/base-files/etc/config/wireless
           config wifi-device 'radio0'
@@ -78,6 +84,7 @@ jobs:
               option band '5g'
               option path 'platform/soc/c000000.wifi'
               option htmode 'VHT160'
+              option ssid 'OpenWrt-MA3063-5G'
 
           config wifi-iface 'default_radio0'
               option device 'radio0'
@@ -92,6 +99,7 @@ jobs:
               option band '2g'
               option path 'platform/soc/c000000.wifi+1'
               option htmode 'HE20'
+              option ssid 'OpenWrt-MA3063-2.4G'
 
           config wifi-iface 'default_radio1'
               option device 'radio1'
@@ -108,22 +116,18 @@ jobs:
         run: |
           make -j$(nproc) || make -j1 V=s
 
-      - name: Rename and Release Firmware
+      - name: Rename and Create SHA256
         run: |
-          # 1. 进入固件输出目录
           cd $GITHUB_WORKSPACE/bin/targets/qualcommax/ipq50xx/
           
-          # 2. 使用 find 查找并重命名为标准文件名
-          find . -maxdepth 1 -name "*sysupgrade.bin" -exec mv {} openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin \;
-          find . -maxdepth 1 -name "*factory.ubi" -exec mv {} openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi \;
-          find . -maxdepth 1 -name "*initramfs-uImage.itb" -exec mv {} openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb \;
-          find . -maxdepth 1 -name "*.manifest" -exec mv {} openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest \;
-          
-          # 3. 计算 SHA256 并保存为 sha256sums
-          sha256sum openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin \
-                    openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi \
-                    openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb \
-                    openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest > sha256sums
+          # 1. 将带版本号前缀的原始文件强制重命名为你想要的完整标准名
+          for file in *-sysupgrade.bin; do mv "$file" openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin; done
+          for file in *-factory.ubi; do mv "$file" openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi; done
+          for file in *-initramfs-uImage.itb; do mv "$file" openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb; done
+          for file in *.manifest; do mv "$file" openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest; done
+
+          # 2. 生成 sha256sums 校验文件
+          sha256sum *.bin *.ubi *.itb *.manifest > sha256sums
 
       - name: Release Firmware
         uses: softprops/action-gh-release@v2
@@ -133,6 +137,7 @@ jobs:
           body: 自动编译生成，包含 sysupgrade.bin 与 factory.ubi
           draft: false
           prerelease: false
+          # 3. 直接指定这 5 个重命名后的文件上传，不打包
           files: |
             bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin
             bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi
