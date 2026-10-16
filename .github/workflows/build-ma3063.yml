@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - fix-ma3063-ethernet-luci
+      - main
     paths:
       - 'target/linux/qualcommax/**'
       - '.github/workflows/build-ma3063.yml'
@@ -41,19 +41,34 @@ jobs:
 
       - name: Configure for RG-MA3063
         run: |
-          cat > .config <<'EOF'
-          CONFIG_TARGET_qualcommax=y
-          CONFIG_TARGET_qualcommax_ipq50xx=y
-          CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y
-          CONFIG_PACKAGE_luci=y
-          EOF
+          # 1. 先生成默认基础配置
           make defconfig
+          # 2. 追加设备型号、中文语言包、插件和主题
+          echo "CONFIG_TARGET_QUALCOMMAX=y" >> .config
+          echo "CONFIG_TARGET_QUALCOMMAX_IPQ50XX=y" >> .config
+          echo "CONFIG_TARGET_QUALCOMMAX_IPQ50XX_DEVICE_RUIJIE_RG-MA3063=y" >> .config
+          echo "CONFIG_PACKAGE_luci=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
+          echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y" >> .config
+          # 3. 修复内核 bool 选项被顶成 m 的 bug
+          find target/linux -name 'config-*' -type f -exec sed -i \
+            -e 's/^CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT=m/# CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT is not set/' \
+            -e 's/^CONFIG_NET_DSA_QCA8K=m/CONFIG_NET_DSA_QCA8K=y/' \
+            -e 's/^CONFIG_LEDS_CLASS=m/CONFIG_LEDS_CLASS=y/' {} \;
+          # 4. 重新生成依赖关系
+          make defconfig
+          
+          echo "=== 验证当前 .config 配置是否正确 ==="
+          grep -E "TARGET_QUALCOMMAX|luci-i18n-base-zh-cn|luci-theme-argon|luci-app-ttyd" .config
 
       - name: Download sources
-        run: make download -j$(nproc)
+        run: make -j$(nproc)
 
       - name: Build firmware
-        run: make -j$(nproc)
+        run: |
+          make -j$(nproc) || make -j1 V=s
 
       - name: Collect artifacts
         run: |
@@ -64,5 +79,6 @@ jobs:
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: openwrt-ma3063
+          name: openwrt-ma3063-with-argon-zh
           path: artifacts/
+
