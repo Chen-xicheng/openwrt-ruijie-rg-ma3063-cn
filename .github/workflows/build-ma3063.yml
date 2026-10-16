@@ -42,15 +42,15 @@ jobs:
       - name: Configure for RG-MA3063
         run: |
           make defconfig
+          echo "CONFIG_PACKAGE_luci=y" >> .config
+          echo "CONFIG_PACKAGE_firmware-ipq-wifi=y" >> .config
+          echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
           echo "CONFIG_TARGET_QUALCOMMAX=y" >> .config
           echo "CONFIG_TARGET_QUALCOMMAX_IPQ50XX=y" >> .config
           echo "CONFIG_TARGET_QUALCOMMAX_IPQ50XX_DEVICE_RUIJIE_RG-MA3063=y" >> .config
-          echo "CONFIG_PACKAGE_luci=y" >> .config
-          echo "CONFIG_PACKAGE_firmware-ipq-wifi=y" >> .config
-          echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
-          echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
-          echo "CONFIG_PACKAGE_luci-i18n-argon-zh-cn=y" >> .config
           
           find target/linux -name 'config-*' -type f -exec sed -i \
             -e 's/^CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT=m/# CONFIG_NET_DSA_QCA8K_LEDS_SUPPORT is not set/' \
@@ -78,18 +78,21 @@ jobs:
               option band '5g'
               option path 'platform/soc/c000000.wifi'
               option htmode 'VHT160'
+
           config wifi-iface 'default_radio0'
               option device 'radio0'
               option network 'lan'
               option mode 'ap'
               option ssid 'OpenWrt-MA3063-5G'
               option encryption 'none'
+
           config wifi-device 'radio1'
               option type 'mac80211'
               option channel '1'
               option band '2g'
               option path 'platform/soc/c000000.wifi+1'
               option htmode 'HE20'
+
           config wifi-iface 'default_radio1'
               option device 'radio1'
               option network 'lan'
@@ -105,23 +108,14 @@ jobs:
         run: |
           make -j$(nproc) || make -j1 V=s
 
-      - name: Find and Rename Firmware
+      - name: Copy and Calculate SHA256
         run: |
-          # 使用 GITHUB_WORKSPACE 精准定位，确保找到固件
           cd $GITHUB_WORKSPACE/bin/targets/qualcommax/ipq50xx/
-          ls -lh .
-          
-          # 智能重命名固件（防止因为版本前缀不同导致找不到）
-          for f in *-sysupgrade.bin; do mv "$f" "openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin"; done
-          for f in *-factory.ubi; do mv "$f" "openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi"; done
-          for f in *-uImage.itb; do mv "$f" "openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb"; done
-          for f in *.manifest; do mv "$f" "openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest"; done
-          
-          # 生成 SHA256 校验
-          sha256sum *.bin *.ubi *.itb *.manifest > sha256sums.txt
-          cp sha256sums.txt openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.sha256
+          # 在固件同级目录生成 sha256sums 文件
+          sha256sum *-sysupgrade.bin *-factory.ubi *-initramfs-uImage.itb *.manifest > sha256sums
+          ls -lh
 
-      - name: Create GitHub Release
+      - name: Release firmware
         uses: softprops/action-gh-release@v2
         with:
           tag_name: rg-ma3063-${{ github.run_number }}
@@ -130,10 +124,10 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin
-            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi
-            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb
-            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest
-            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.sha256
+            openwrt/bin/targets/qualcommax/ipq50xx/*-sysupgrade.bin
+            openwrt/bin/targets/qualcommax/ipq50xx/*-factory.ubi
+            openwrt/bin/targets/qualcommax/ipq50xx/*-initramfs-uImage.itb
+            openwrt/bin/targets/qualcommax/ipq50xx/*.manifest
+            openwrt/bin/targets/qualcommax/ipq50xx/sha256sums
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
