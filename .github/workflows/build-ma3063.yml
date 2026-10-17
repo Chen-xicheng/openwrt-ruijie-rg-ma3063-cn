@@ -1,4 +1,20 @@
-runs-on: ubuntu-24.04
+name: Build RG-MA3063
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'target/linux/qualcommax/**'
+      - '.github/workflows/build-ma3063.yml'
+
+env:
+  TZ: Asia/Jakarta
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
