@@ -112,26 +112,44 @@ jobs:
 
       - name: Rename firmware to standard names
         run: |
-          # 调试：打印 bin/targets 下的实际目录结构
-          echo "Checking actual output directory structure..."
-          ls -R bin/targets/
-
-          # 假设实际的目录名可能是 ipq50xx 或其他名称（如 ipq50xx-armv7），请根据上面 ls 的输出进行修改。
-          # 如果 ls 输出显示是 ipq50xx，保留下面的代码；
-          # 如果显示的是 ipq50xx-armv7，请将下面的 ipq50xx 替换为 ipq50xx-armv7。
-          TARGET_DIR="ipq50xx" # <--- 根据实际目录名修改这里
+          # 1. 查找实际的固件输出路径 (自动寻找 qualcommax 下的任意子目录)
+          echo "=== 正在寻找实际的固件输出目录 ==="
+          ACTUAL_DIR=$(find bin/targets/qualcommax -mindepth 1 -maxdepth 1 -type d | head -n 1)
           
-          # 强制进入固件所在目录
-          cd "bin/targets/qualcommax/${TARGET_DIR}/" || { echo "Error: Directory bin/targets/qualcommax/${TARGET_DIR}/ not found!"; exit 1; }
+          if [ -z "$ACTUAL_DIR" ]; then
+            echo "错误：在 bin/targets/qualcommax/ 下未找到任何子目录！"
+            echo "正在打印 bin/targets 的结构以便排查："
+            ls -R bin/targets/
+            exit 1
+          fi
 
-          # 强制将任何带版本号的文件重命名为不带版本号的固定全名
-          for f in *-sysupgrade.bin; do mv "$f" openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin; done
-          for f in *-factory.ubi; do mv "$f" openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi; done
-          for f in *-initramfs-uImage.itb; do mv "$f" openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb; done
-          for f in *.manifest; do mv "$f" openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest; done
+          # 打印目标目录的文件列表
+          echo "找到目标目录: $ACTUAL_DIR"
+          echo "目录内容如下:"
+          ls -la "$ACTUAL_DIR"
           
-          # 生成固定名字的校验文件
-          sha256sum openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin \
-                    openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi \
-                    openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb \
-                    openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest > sha256sums
+          # 2. 进入实际存在的目录
+          cd "$ACTUAL_DIR"
+
+          # 3. 提取编译出的固件前缀 (例如: openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-2023...)
+          SYSUPGRADE_FILE=$(ls *-sysupgrade.bin 2>/dev/null | head -n 1)
+          
+          if [ -z "$SYSUPGRADE_FILE" ]; then
+            echo "错误：当前目录下未找到 *-sysupgrade.bin 文件！请检查上面的 ls 列表。"
+            exit 1
+          fi
+
+          # 4. 执行重命名 (使用你要求的固定标准名称)
+          echo "正在重命名固件..."
+          mv "$SYSUPGRADE_FILE" openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin
+          
+          # 对其他文件进行重命名，并忽略不存在的文件 (防止因为某些包没生成而中断)
+          mv *-factory.ubi openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi 2>/dev/null || echo "未发现 factory.ubi，跳过"
+          mv *-initramfs-uImage.itb openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb 2>/dev/null || echo "未发现 initramfs，跳过"
+          mv *.manifest openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest 2>/dev/null || echo "未发现 manifest，跳过"
+
+          # 5. 生成新的校验文件
+          sha256sum openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin > sha256sums
+          sha256sum openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi >> sha256sums 2>/dev/null
+          sha256sum openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb >> sha256sums 2>/dev/null
+          sha256sum openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest >> sha256sums 2>/dev/null
