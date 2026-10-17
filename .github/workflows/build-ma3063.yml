@@ -104,11 +104,24 @@ jobs:
           EOF
 
       - name: Download sources
-        run: make -j$(nproc)
+        run: |
+          # 1. 只负责下载依赖，不执行任何编译任务
+          make download -j$(nproc) V=s
+          # 2. 删除损坏或不完整的下载文件，防止后续编译报错
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
 
       - name: Build firmware
         run: |
-          make -j$(nproc) || make -j1 V=s
+          # 1. 生成并确认 .config 配置
+          echo "CONFIG_TARGET_QUALCOMMAX=y" >> .config
+          echo "CONFIG_TARGET_QUALCOMMAX_IPQ50XX=y" >> .config
+          echo "CONFIG_TARGET_QUALCOMMAX_IPQ50XX_DEVICE_RUIJIE_RG-MA3063=y" >> .config
+          make defconfig
+
+          # 2. 【核心修改】直接使用 -j1 V=s 开始完整编译
+          #    绝对不要加 dirclean，它会删除整个编译环境！
+          make -j1 V=s
 
       - name: Rename firmware to standard names
         run: |
