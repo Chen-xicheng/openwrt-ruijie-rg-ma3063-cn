@@ -112,8 +112,18 @@ jobs:
 
       - name: Rename firmware to standard names
         run: |
+          # 调试：打印 bin/targets 下的实际目录结构
+          echo "Checking actual output directory structure..."
+          ls -R bin/targets/
+
+          # 假设实际的目录名可能是 ipq50xx 或其他名称（如 ipq50xx-armv7），请根据上面 ls 的输出进行修改。
+          # 如果 ls 输出显示是 ipq50xx，保留下面的代码；
+          # 如果显示的是 ipq50xx-armv7，请将下面的 ipq50xx 替换为 ipq50xx-armv7。
+          TARGET_DIR="ipq50xx" # <--- 根据实际目录名修改这里
+          
           # 强制进入固件所在目录
-          cd bin/targets/qualcommax/ipq50xx/
+          cd "bin/targets/qualcommax/${TARGET_DIR}/" || { echo "Error: Directory bin/targets/qualcommax/${TARGET_DIR}/ not found!"; exit 1; }
+
           # 强制将任何带版本号的文件重命名为不带版本号的固定全名
           for f in *-sysupgrade.bin; do mv "$f" openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin; done
           for f in *-factory.ubi; do mv "$f" openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi; done
@@ -125,21 +135,3 @@ jobs:
                     openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi \
                     openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb \
                     openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest > sha256sums
-
-      - name: Release Firmware
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: rg-ma3063-${{ github.run_number }}
-          name: RG-MA3063 OpenWrt Build ${{ github.run_number }}
-          body: 自动编译生成，包含 sysupgrade.bin 与 factory.ubi
-          draft: false
-          prerelease: false
-          # 指定你要求的 5 个固定完整名称文件进行上传
-          files: |
-            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin
-            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi
-            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb
-            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest
-            bin/targets/qualcommax/ipq50xx/sha256sums
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
