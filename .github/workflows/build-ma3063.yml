@@ -55,7 +55,16 @@ jobs:
 
       - name: Build Firmware
         run: |
-          # 【完美匹配原作者】直接开始编译，绝不清空环境(dirclean)，确保配置生效
+          # 【核心修复】补全底层编译所需的全部系统依赖，防止 toolchain 阶段报错
+          sudo apt-get update
+          sudo apt-get install -y \
+            binutils build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib git gettext libncurses-dev libssl-dev \
+            python3-distutils python3-setuptools python3-dev rsync swig \
+            unzip zlib1g-dev lib32z1 lib32ncurses6 lib32bz2-1.0 \
+            liblzma-dev
+
+          echo "环境依赖安装完毕，开始编译..."
           make -j$(nproc)
 
       - name: Collect and Rename Artifacts
