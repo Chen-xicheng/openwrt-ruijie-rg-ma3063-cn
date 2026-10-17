@@ -112,44 +112,68 @@ jobs:
 
       - name: Rename firmware to standard names
         run: |
-          # 1. 查找实际的固件输出路径 (自动寻找 qualcommax 下的任意子目录)
-          echo "=== 正在寻找实际的固件输出目录 ==="
+          # 1. 动态寻找 qualcommax 下的真实子目录
+          echo "=== 正在寻找固件输出目录 ==="
           ACTUAL_DIR=$(find bin/targets/qualcommax -mindepth 1 -maxdepth 1 -type d | head -n 1)
           
           if [ -z "$ACTUAL_DIR" ]; then
-            echo "错误：在 bin/targets/qualcommax/ 下未找到任何子目录！"
-            echo "正在打印 bin/targets 的结构以便排查："
-            ls -R bin/targets/
+            echo "致命错误：在 bin/targets/qualcommax/ 下未找到任何子目录！请检查源码架构。"
             exit 1
           fi
 
-          # 打印目标目录的文件列表
-          echo "找到目标目录: $ACTUAL_DIR"
-          echo "目录内容如下:"
+          echo "已找到固件目录: $ACTUAL_DIR"
+          echo "该目录下的原始文件清单如下："
           ls -la "$ACTUAL_DIR"
           
-          # 2. 进入实际存在的目录
+          # 2. 进入目标目录
           cd "$ACTUAL_DIR"
 
-          # 3. 提取编译出的固件前缀 (例如: openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-2023...)
+          # 3. 提取真实的文件前缀（应对各种奇怪的文件名）
           SYSUPGRADE_FILE=$(ls *-sysupgrade.bin 2>/dev/null | head -n 1)
-          
           if [ -z "$SYSUPGRADE_FILE" ]; then
-            echo "错误：当前目录下未找到 *-sysupgrade.bin 文件！请检查上面的 ls 列表。"
-            exit 1
+             echo "致命错误：在 $ACTUAL_DIR 下没有找到 sysupgrade.bin！请检查上面的文件清单。"
+             exit 1
           fi
 
-          # 4. 执行重命名 (使用你要求的固定标准名称)
-          echo "正在重命名固件..."
-          mv "$SYSUPGRADE_FILE" openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin
-          
-          # 对其他文件进行重命名，并忽略不存在的文件 (防止因为某些包没生成而中断)
-          mv *-factory.ubi openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi 2>/dev/null || echo "未发现 factory.ubi，跳过"
-          mv *-initramfs-uImage.itb openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb 2>/dev/null || echo "未发现 initramfs，跳过"
-          mv *.manifest openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest 2>/dev/null || echo "未发现 manifest，跳过"
+          # 提取不带 -sysupgrade.bin 的后缀前缀
+          FILE_PREFIX=${SYSUPGRADE_FILE%-sysupgrade.bin}
 
-          # 5. 生成新的校验文件
-          sha256sum openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin > sha256sums
-          sha256sum openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi >> sha256sums 2>/dev/null
-          sha256sum openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb >> sha256sums 2>/dev/null
-          sha256sum openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest >> sha256sums 2>/dev/null
+          # 4. 定义我们要导出的标准文件名
+          FINAL_NAME="openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063"
+          
+          # 5. 开始重命名（带有错误容错，缺什么就跳过什么）
+          echo "正在将固件重命名为标准格式..."
+          
+          # 重命名 sysupgrade (必须有)
+          mv "$FILE_PREFIX-sysupgrade.bin" "${FINAL_NAME}-squashfs-sysupgrade.bin"
+          
+          # 重命名 factory (如果没有就跳过)
+          mv "${FILE_PREFIX}-factory.ubi" "${FINAL_NAME}-squashfs-factory.ubi" 2>/dev/null || echo ">> 未发现 factory.ubi 文件，跳过。"
+          
+          # 重命名 initramfs (如果没有就跳过)
+          mv "${FILE_PREFIX}-initramfs-uImage.itb" "${FINAL_NAME}-initramfs-uImage.itb" 2>/dev/null || echo ">> 未发现 initramfs 文件，跳过。"
+          
+          # 重命名 manifest (如果没有就跳过)
+          mv "${FILE_PREFIX}.manifest" "${FINAL_NAME}.manifest" 2>/dev/null || echo ">> 未发现 manifest 文件，跳过。"
+
+          # 6. 生成 sha256 校验和文件
+          sha256sum "${FINAL_NAME}"* > sha256sums 2>/dev/null || true
+          echo "重命名完毕，当前目录包含："
+          ls -la
+
+      - name: Release Firmware
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: rg-ma3063-${{ github.run_number }}
+          name: RG-MA3063 OpenWrt Build ${{ github.run_number }}
+          body: "自动编译生成的固件。包含：sysupgrade.bin, factory.ubi, initramfs, manifest"
+          draft: false
+          prerelease: false
+          files: |
+            bin/targets/qualcommax/*/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-sysupgrade.bin
+            bin/targets/qualcommax/*/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-squashfs-factory.ubi
+            bin/targets/qualcommax/*/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063-initramfs-uImage.itb
+            bin/targets/qualcommax/*/openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063.manifest
+            bin/targets/qualcommax/*/sha256sums
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
