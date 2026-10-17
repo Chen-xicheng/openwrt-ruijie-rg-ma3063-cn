@@ -1,20 +1,4 @@
-name: Build RG-MA3063
-
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - 'target/linux/qualcommax/**'
-      - '.github/workflows/build-ma3063.yml'
-
-env:
-  TZ: Asia/Jakarta
-
-jobs:
-  build:
-    runs-on: ubuntu-24.04
+runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -113,24 +97,20 @@ jobs:
 
       - name: Build firmware
         run: |
-          # 1. 生成并确认 .config 配置
-          echo "CONFIG_TARGET_QUALCOMMAX=y" >> .config
-          echo "CONFIG_TARGET_QUALCOMMAX_IPQ50XX=y" >> .config
-          echo "CONFIG_TARGET_QUALCOMMAX_IPQ50XX_DEVICE_RUIJIE_RG-MA3063=y" >> .config
+          # 1. 最终确认 .config 配置
           make defconfig
-
-          # 2. 【核心修改】直接使用 -j1 V=s 开始完整编译
-          #    绝对不要加 dirclean，它会删除整个编译环境！
+          
+          # 2. 开始完整编译 (耗时约 40 分钟至 1.5 小时)
           make -j1 V=s
 
       - name: Rename firmware to standard names
         run: |
           # 1. 动态寻找 qualcommax 下的真实子目录
-          echo "=== 正在寻找固件输出目录 ==="
           ACTUAL_DIR=$(find bin/targets/qualcommax -mindepth 1 -maxdepth 1 -type d | head -n 1)
           
           if [ -z "$ACTUAL_DIR" ]; then
-            echo "致命错误：在 bin/targets/qualcommax/ 下未找到任何子目录！请检查源码架构。"
+            echo "致命错误：在 bin/targets/qualcommax/ 下未找到任何子目录！请检查编译日志。"
+            ls -R bin/targets/
             exit 1
           fi
 
@@ -141,45 +121,33 @@ jobs:
           # 2. 进入目标目录
           cd "$ACTUAL_DIR"
 
-          # 3. 提取真实的文件前缀（应对各种奇怪的文件名）
+          # 3. 提取真实的文件前缀
           SYSUPGRADE_FILE=$(ls *-sysupgrade.bin 2>/dev/null | head -n 1)
           if [ -z "$SYSUPGRADE_FILE" ]; then
-             echo "致命错误：在 $ACTUAL_DIR 下没有找到 sysupgrade.bin！请检查上面的文件清单。"
+             echo "致命错误：在 $ACTUAL_DIR 下没有找到 sysupgrade.bin！"
              exit 1
           fi
-
-          # 提取不带 -sysupgrade.bin 的后缀前缀
           FILE_PREFIX=${SYSUPGRADE_FILE%-sysupgrade.bin}
 
           # 4. 定义我们要导出的标准文件名
           FINAL_NAME="openwrt-qualcommax-ipq50xx-ruijie_rg-ma3063"
           
-          # 5. 开始重命名（带有错误容错，缺什么就跳过什么）
-          echo "正在将固件重命名为标准格式..."
-          
-          # 重命名 sysupgrade (必须有)
+          # 5. 开始重命名
           mv "$FILE_PREFIX-sysupgrade.bin" "${FINAL_NAME}-squashfs-sysupgrade.bin"
-          
-          # 重命名 factory (如果没有就跳过)
-          mv "${FILE_PREFIX}-factory.ubi" "${FINAL_NAME}-squashfs-factory.ubi" 2>/dev/null || echo ">> 未发现 factory.ubi 文件，跳过。"
-          
-          # 重命名 initramfs (如果没有就跳过)
-          mv "${FILE_PREFIX}-initramfs-uImage.itb" "${FINAL_NAME}-initramfs-uImage.itb" 2>/dev/null || echo ">> 未发现 initramfs 文件，跳过。"
-          
-          # 重命名 manifest (如果没有就跳过)
-          mv "${FILE_PREFIX}.manifest" "${FINAL_NAME}.manifest" 2>/dev/null || echo ">> 未发现 manifest 文件，跳过。"
+          mv "${FILE_PREFIX}-factory.ubi" "${FINAL_NAME}-squashfs-factory.ubi" 2>/dev/null || echo "未发现 factory.ubi 文件，跳过。"
+          mv "${FILE_PREFIX}-initramfs-uImage.itb" "${FINAL_NAME}-initramfs-uImage.itb" 2>/dev/null || echo "未发现 initramfs 文件，跳过。"
+          mv "${FILE_PREFIX}.manifest" "${FINAL_NAME}.manifest" 2>/dev/null || echo "未发现 manifest 文件，跳过。"
 
           # 6. 生成 sha256 校验和文件
           sha256sum "${FINAL_NAME}"* > sha256sums 2>/dev/null || true
-          echo "重命名完毕，当前目录包含："
-          ls -la
+          echo "重命名完毕。"
 
       - name: Release Firmware
         uses: softprops/action-gh-release@v2
         with:
           tag_name: rg-ma3063-${{ github.run_number }}
           name: RG-MA3063 OpenWrt Build ${{ github.run_number }}
-          body: "自动编译生成的固件。包含：sysupgrade.bin, factory.ubi, initramfs, manifest"
+          body: "自动编译生成的固件。"
           draft: false
           prerelease: false
           files: |
