@@ -45,23 +45,29 @@ jobs:
       - name: 应用 RG-MA3063 补丁
         run: |
           cd openwrt
-          git apply ../build-repo/patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch
+          echo "正在查找 build-repo 中的补丁文件..."
+          
+          # 自动查找 build-repo 目录下的所有 .patch 文件并按顺序排序
+          PATCHES=$(find ../build-repo -type f -name "*.patch" | sort)
+          
+          if [ -z "$PATCHES" ]; then
+            echo "错误: 在 build-repo 中未找到任何 .patch 补丁文件！"
+            echo "请检查你的仓库，确保补丁文件已上传并且后缀为 .patch"
+            exit 1
+          fi
 
-      # ========== 关键修改：使用 actions/checkout 拉取 Argon 主题 ==========
+          # 遍历并应用找到的每个补丁
+          for p in $PATCHES; do
+            echo "=========================================="
+            echo "正在应用补丁: $p"
+            git apply -v "$p"
+          done
+
       - name: 检出 Argon 主题
         uses: actions/checkout@v4
         with:
           repository: jerrykuku/luci-theme-argon
           path: openwrt/package/luci-theme-argon
-          # 如果主题有特定分支或标签，可加 ref 字段，例如：
-          # ref: master
-
-      # 可选：如果还需要其他第三方包，继续用 actions/checkout 逐个检出
-      # - name: 检出 luci-app-ttyd（如果不在官方 feed 中）
-      #   uses: actions/checkout@v4
-      #   with:
-      #     repository: 用户名/luci-app-ttyd
-      #     path: openwrt/package/luci-app-ttyd
 
       - name: 更新 Feeds
         run: |
