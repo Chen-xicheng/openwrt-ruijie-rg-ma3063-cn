@@ -1,76 +1,131 @@
-name: Build RG-MA3063 OpenWrt
+name: Build OpenWrt for Ruijie RG-MA3063
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
+    inputs:
+      upload_artifact:
+        description: '是否上传固件 Artifact'
+        required: false
+        default: 'true'
+        type: boolean
 
 env:
-  TARGET_PROFILE: ruijie_rg-ma3063
-  FIRMWARE_NAME: RG-MA3063-OpenWrt
-  MAKE_JOBS: -j$(nproc)
+  REPO_URL: https://github.com/openwrt/openwrt
+  REPO_COMMIT: 486b4a4b3ede480635a185234fc624c969426f13
+  TARGET: qualcommax
+  SUBTARGET: ipq50xx
+  DEVICE: ruijie_rg-ma3063
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
     steps:
-      - name: Checkout
+      - name: 检出构建仓库（含补丁）
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          path: build-repo
 
-      - name: Install build dependencies
+      - name: 安装编译依赖
         run: |
-          sudo apt update
-          sudo apt install -y build-essential libncurses-dev gawk flex bison openssl libssl-dev dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf git file wget curl rsync unzip python3 python3-pip
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang flex bison g++ gawk gcc-multilib \
+            g++-multilib gettext git libncurses5-dev libssl-dev \
+            python3 python3-distutils python3-pip python3-setuptools \
+            rsync swig unzip zlib1g-dev file wget
 
-      - name: Cache OpenWrt build
-        uses: actions/cache@v4
+      - name: 克隆 OpenWrt 源码（指定 commit）
+        run: |
+          git clone --filter=blob:none https://github.com/openwrt/openwrt openwrt
+          cd openwrt
+          git checkout ${{ env.REPO_COMMIT }}
+
+      - name: 应用 RG-MA3063 补丁
+        run: |
+          cd openwrt
+          git apply ../build-repo/patches/0001-qualcommax-ipq50xx-add-ruijie-rg-ma3063.patch
+
+      # ========== 关键修改：使用 actions/checkout 拉取 Argon 主题 ==========
+      - name: 检出 Argon 主题
+        uses: actions/checkout@v4
         with:
-          path: |
-            staging_dir
-            build_dir
-            dl
-          key: ${{ runner.os }}-openwrt-ma3063-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-openwrt-ma3063-
+          repository: jerrykuku/luci-theme-argon
+          path: openwrt/package/luci-theme-argon
+          # 如果主题有特定分支或标签，可加 ref 字段，例如：
+          # ref: master
 
-      - name: Update & Install feeds
+      # 可选：如果还需要其他第三方包，继续用 actions/checkout 逐个检出
+      # - name: 检出 luci-app-ttyd（如果不在官方 feed 中）
+      #   uses: actions/checkout@v4
+      #   with:
+      #     repository: 用户名/luci-app-ttyd
+      #     path: openwrt/package/luci-app-ttyd
+
+      - name: 更新 Feeds
         run: |
+          cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Fetch extra packages
+      - name: 生成 .config
         run: |
-          cd package
-          git clone https://github.com/jerrykuku/luci-theme-argon.git
-          git clone https://github.com/jerrykuku/luci-app-argon-config.git
-          git clone https://github.com/tsl0922/ttyd.git
-          git clone https://github.com/OpenWrt-Actions/luci-app-ttyd.git
-          cd ..
+          cd openwrt
+          cat > .config << 'EOF'
+          # ===== 目标平台 =====
+          CONFIG_TARGET_qualcommax=y
+          CONFIG_TARGET_qualcommax_ipq50xx=y
+          CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_ruijie_rg-ma3063=y
 
-      - name: Apply config
+          # ===== LuCI 基础 =====
+          CONFIG_PACKAGE_luci=y
+          CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
+
+          # ===== Argon 主题 =====
+          CONFIG_PACKAGE_luci-theme-argon=y
+          CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn=y
+
+          # ===== TTYD 终端 =====
+          CONFIG_PACKAGE_luci-app-ttyd=y
+
+          # ===== 中文语言（可选）=====
+          CONFIG_PACKAGE_luci-i18n-firewall-zh-cn=y
+          CONFIG_PACKAGE_luci-i18n-opkg-zh-cn=y
+
+          # ===== 镜像构建选项 =====
+          CONFIG_TARGET_ROOTFS_PARTSIZE=51200
+          EOF
+
+      - name: 展开完整配置
         run: |
-          cp config.seed .config
-          echo "CONFIG_PACKAGE_luci=y" >> .config
-          echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y" >> .config
-          echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
-          make olddefconfig
+          cd openwrt
+          make defconfig
 
-      - name: Compile firmware
+      - name: 下载编译依赖包
         run: |
-          make $MAKE_JOBS V=s
+          cd openwrt
+          make download -j8
+          find dl -size -1024c -exec rm -f {} \;
 
-      - name: Generate md5sum
+      - name: 开始编译
         run: |
-          cd bin/targets
-          find . -type f ! -name "md5sums" -print0 | xargs -0 md5sum > md5sums
+          cd openwrt
+          make -j$(nproc) || make -j1 V=s
 
-      - name: Upload firmware
+      - name: 整理固件产物
+        run: |
+          cd openwrt
+          mkdir -p ../output
+          find bin/targets/qualcommax/ipq50xx -maxdepth 1 -type f \
+            \( -name "*.bin" -o -name "*.ubi" -o -name "*.itb" -o -name "*.tar" \) \
+            -exec cp {} ../output/ \;
+          ls -lh ../output/
+
+      - name: 上传 Artifact
+        if: inputs.upload_artifact == 'true' || inputs.upload_artifact == true
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.FIRMWARE_NAME }}
-          path: bin/targets/**
+          name: openwrt-rg-ma3063-${{ github.run_number }}
+          path: output/
+          retention-days: 7
