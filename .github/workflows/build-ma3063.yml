@@ -64,6 +64,16 @@ jobs:
             echo "未发现 patches 目录，跳过补丁应用。"
           fi
 
+      # ========== 关键修改：强制删除官方冲突补丁 ==========
+      - name: 清理导致编译冲突的官方内核补丁
+        run: |
+          cd openwrt
+          echo "正在删除导致报错的内核补丁..."
+          # 删除报错的 625 补丁
+          rm -f target/linux/generic/backport-6.18/625-v7.0-ppp-enable-TX-scatter-gather.patch
+          echo "删除完成！"
+      # ======================================================
+
       - name: 检出 Argon 主题
         uses: actions/checkout@v4
         with:
